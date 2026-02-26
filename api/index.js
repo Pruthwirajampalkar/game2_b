@@ -437,11 +437,6 @@ io.on('connection', (socket) => {
   });
 });
 
-if (!process.env.VERCEL) {
-  server.listen(PORT, () => {
-    console.log(`Server listening on port ${PORT}`);
-  });
-}
-
-// Export the server for Vercel Serverless Functions
-module.exports = server;
+server.listen(PORT, () => {
+  console.log(`Server listening on port ${PORT}`);
+});
