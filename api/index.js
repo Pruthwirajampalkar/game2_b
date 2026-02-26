@@ -278,6 +278,8 @@ io.on('connection', (socket) => {
         maxRounds: 3,
         turnTime: 60,
         maxPlayers: 8,
+        hostId: socket.id,
+        hostName: username,
         status: 'lobby',
         timer: 0,
         timerInterval: null,
@@ -288,10 +290,14 @@ io.on('connection', (socket) => {
 
     // Avoid duplicate names/sockets if possible, but allow for now
     if (!room.players.find(p => p.id === socket.id)) {
+      // if reconnecting with same username and they happen to be original host, restore hostId
+      if (room.hostName === username && !room.hostId) {
+        room.hostId = socket.id;
+      }
       room.players.push({ id: socket.id, username, avatar: avatar || 'Felix', score: 0, emotion: 'default' });
     }
 
-    const roomData = { ...room, timerInterval: null, guessedPlayers: Array.from(room.guessedPlayers || []) };
+    const roomData = { ...room, timerInterval: null, guessedPlayers: Array.from(room.guessedPlayers || []), hostId: room.hostId };
     io.to(roomId).emit('room_update', roomData);
     console.log(`${username} joined room ${roomId}`);
 
@@ -308,7 +314,7 @@ io.on('connection', (socket) => {
   socket.on('start_game', (roomId) => {
     console.log(`start_game event from ${socket.id} for room ${roomId}`);
     const room = rooms.get(roomId);
-    if (room && room.players.length > 0 && room.status === 'lobby' && room.players[0].id === socket.id) {
+    if (room && room.players.length > 0 && room.status === 'lobby' && room.hostId === socket.id) {
       room.round = 1;
       room.players.forEach(p => p.score = 0);
       room.drawerQueue = [...room.players.map(p => p.id)];
@@ -318,11 +324,11 @@ io.on('connection', (socket) => {
 
   socket.on('update_settings', ({ roomId, settings }) => {
     const room = rooms.get(roomId);
-    if (room && room.status === 'lobby' && room.players.length > 0 && room.players[0].id === socket.id) {
+    if (room && room.status === 'lobby' && room.players.length > 0 && room.hostId === socket.id) {
       if (settings.maxRounds) room.maxRounds = settings.maxRounds;
       if (settings.turnTime) room.turnTime = settings.turnTime;
       if (settings.maxPlayers) room.maxPlayers = settings.maxPlayers;
-      const roomData = { ...room, timerInterval: null, guessedPlayers: Array.from(room.guessedPlayers || []) };
+      const roomData = { ...room, timerInterval: null, guessedPlayers: Array.from(room.guessedPlayers || []), hostId: room.hostId };
       io.to(roomId).emit('room_update', roomData);
       // if current count already meets new limit, start immediately
       if (room.players.length === room.maxPlayers) {
@@ -409,10 +415,17 @@ io.on('connection', (socket) => {
     for (const [roomId, room] of rooms.entries()) {
       const index = room.players.findIndex(p => p.id === socket.id);
       if (index !== -1) {
+        const wasHost = room.hostId === socket.id;
         room.players.splice(index, 1);
 
         // Remove from drawer queue
         room.drawerQueue = room.drawerQueue.filter(id => id !== socket.id);
+
+        // reassign host if needed
+        if (wasHost) {
+          room.hostId = room.players[0]?.id || null;
+          room.hostName = room.players[0]?.username || null;
+        }
 
         if (room.players.length === 0) {
           clearInterval(room.timerInterval);
@@ -423,7 +436,7 @@ io.on('connection', (socket) => {
             io.to(roomId).emit('chat_message', { username: 'System', message: 'Drawer disconnected!' });
             endRound(roomId, room);
           } else {
-            const roomData = { ...room, timerInterval: null, guessedPlayers: Array.from(room.guessedPlayers || []) };
+            const roomData = { ...room, timerInterval: null, guessedPlayers: Array.from(room.guessedPlayers || []), hostId: room.hostId };
             io.to(roomId).emit('room_update', roomData);
           }
         }
