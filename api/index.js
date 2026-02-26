@@ -17,7 +17,16 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
     origin: '*',
-    methods: ['GET', 'POST']
+    methods: ['GET', 'POST'],
+    credentials: false
+  },
+  transports: ['websocket', 'polling'],
+  pingInterval: 25000,
+  pingTimeout: 60000,
+  maxHttpBufferSize: 1e6,
+  allowUpgrades: true,
+  perMessageDeflate: {
+    threshold: 1024
   }
 });
 
@@ -255,7 +264,8 @@ function endGame(roomId, room) {
 }
 
 io.on('connection', (socket) => {
-  console.log('User connected:', socket.id);
+  console.log('✅ User connected:', socket.id, 'Transport:', socket.io.engine.transport.name);
+  console.log('📊 Active connections:', io.engine.clientsCount);
 
   socket.on('join_room', ({ username, avatar, roomId }) => {
     let room = rooms.get(roomId);
@@ -420,36 +430,45 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    console.log('User disconnected:', socket.id);
-    for (const [roomId, room] of rooms.entries()) {
-      const index = room.players.findIndex(p => p.id === socket.id);
-      if (index !== -1) {
-        const wasHost = room.hostId === socket.id;
-        room.players.splice(index, 1);
+    console.log('🔌 User disconnected:', socket.id);
+    try {
+      for (const [roomId, room] of rooms.entries()) {
+        const index = room.players.findIndex(p => p.id === socket.id);
+        if (index !== -1) {
+          const wasHost = room.hostId === socket.id;
+          const disconnectedPlayer = room.players[index];
+          room.players.splice(index, 1);
 
-        // Remove from drawer queue
-        room.drawerQueue = room.drawerQueue.filter(id => id !== socket.id);
+          // Remove from drawer queue
+          room.drawerQueue = room.drawerQueue.filter(id => id !== socket.id);
 
-        // reassign host if needed
-        if (wasHost) {
-          room.hostId = room.players[0]?.id || null;
-          room.hostName = room.players[0]?.username || null;
-        }
+          console.log(`Player ${disconnectedPlayer.username} (${socket.id}) left room ${roomId}`);
 
-        if (room.players.length === 0) {
-          clearInterval(room.timerInterval);
-          rooms.delete(roomId);
-        } else {
-          // If drawer left while drawing, end round
-          if (room.status === 'playing' && room.currentDrawer === socket.id) {
-            io.to(roomId).emit('chat_message', { username: 'System', message: 'Drawer disconnected!' });
-            endRound(roomId, room);
+          // reassign host if needed
+          if (wasHost) {
+            room.hostId = room.players[0]?.id || null;
+            room.hostName = room.players[0]?.username || null;
+            if (room.hostId) console.log(`Host transferred to: ${room.hostName}`);
+          }
+
+          if (room.players.length === 0) {
+            clearInterval(room.timerInterval);
+            rooms.delete(roomId);
+            console.log(`Room ${roomId} cleared (0 players)`);
           } else {
-            const roomData = { ...room, timerInterval: null, guessedPlayers: Array.from(room.guessedPlayers || []), hostId: room.hostId };
-            io.to(roomId).emit('room_update', roomData);
+            // If drawer left while drawing, end round
+            if (room.status === 'playing' && room.currentDrawer === socket.id) {
+              io.to(roomId).emit('chat_message', { username: 'System', message: 'Drawer disconnected!' });
+              endRound(roomId, room);
+            } else {
+              const roomData = { ...room, timerInterval: null, guessedPlayers: Array.from(room.guessedPlayers || []), hostId: room.hostId };
+              io.to(roomId).emit('room_update', roomData);
+            }
           }
         }
       }
+    } catch (err) {
+      console.error('⚠️ Disconnect error:', err);
     }
   });
 });
