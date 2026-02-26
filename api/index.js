@@ -293,11 +293,10 @@ io.on('connection', (socket) => {
     const roomData = { ...room, timerInterval: null, guessedPlayers: Array.from(room.guessedPlayers || []) };
     io.to(roomId).emit('room_update', roomData);
     console.log(`${username} joined room ${roomId}`);
-  });
 
-  socket.on('start_game', (roomId) => {
-    const room = rooms.get(roomId);
-    if (room && room.players.length > 0 && room.status === 'lobby' && room.players[0].id === socket.id) {
+    // auto-start logic: when the second player joins and the room is still in lobby
+    if (room.status === 'lobby' && room.players.length === 2) {
+      console.log(`Auto-starting game in room ${roomId} because second player joined`);
       room.round = 1;
       room.players.forEach(p => p.score = 0);
       room.drawerQueue = [...room.players.map(p => p.id)];
@@ -305,28 +304,14 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('kick_player', ({ roomId, targetId }) => {
+  socket.on('start_game', (roomId) => {
+    console.log(`start_game event from ${socket.id} for room ${roomId}`);
     const room = rooms.get(roomId);
-    // Only host (first player) can kick
-    if (room && room.players.length > 0 && room.players[0].id === socket.id && targetId !== socket.id) {
-      const index = room.players.findIndex(p => p.id === targetId);
-      if (index !== -1) {
-        room.players.splice(index, 1);
-        room.drawerQueue = room.drawerQueue.filter(id => id !== targetId);
-
-        io.to(targetId).emit('room_error', 'You have been kicked by the host.');
-        io.to(targetId).socketsLeave(roomId);
-
-        const roomData = { ...room, timerInterval: null, guessedPlayers: Array.from(room.guessedPlayers || []) };
-        io.to(roomId).emit('room_update', roomData);
-      }
-    }
-  });
-
-  socket.on('word_chosen', ({ roomId, word }) => {
-    const room = rooms.get(roomId);
-    if (room && socket.id === room.currentDrawer && room.status === 'choosing_word') {
-      startGameTurnWithWord(roomId, room, word);
+    if (room && room.players.length > 0 && room.status === 'lobby' && room.players[0].id === socket.id) {
+      room.round = 1;
+      room.players.forEach(p => p.score = 0);
+      room.drawerQueue = [...room.players.map(p => p.id)];
+      startNextTurn(roomId, room);
     }
   });
 
