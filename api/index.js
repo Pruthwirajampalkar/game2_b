@@ -439,7 +439,7 @@ io.on('connection', (socket) => {
   });
 });
 
-if (process.env.NODE_ENV !== 'production') {
+if (!process.env.VERCEL) {
   server.listen(PORT, () => {
     console.log(`Server listening on port ${PORT}`);
   });
