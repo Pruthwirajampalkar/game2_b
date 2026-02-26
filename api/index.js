@@ -8,6 +8,11 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Root health check route
+app.get('/', (req, res) => {
+  res.status(200).send('SketchClue API is running');
+});
+
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
