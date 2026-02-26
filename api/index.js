@@ -353,6 +353,15 @@ io.on('connection', (socket) => {
     socket.to(roomId).emit('canvas_cleared');
   });
 
+  socket.on('send_message', ({ roomId, message }) => {
+    const room = rooms.get(roomId);
+    if (!room) return;
+    const player = room.players.find(p => p.id === socket.id);
+    if (player) {
+      io.to(roomId).emit('chat_message', { username: player.username, message });
+    }
+  });
+
   socket.on('guess', ({ roomId, guess }) => {
     const room = rooms.get(roomId);
     if (!room || room.status !== 'playing' || !room.currentWord) return;
