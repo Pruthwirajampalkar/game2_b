@@ -260,9 +260,9 @@ io.on('connection', (socket) => {
   socket.on('join_room', ({ username, avatar, roomId }) => {
     let room = rooms.get(roomId);
 
-    // Apply 8-player limit
-    if (room && room.players.length >= 8 && !room.players.find(p => p.id === socket.id)) {
-      socket.emit('room_error', 'Room is full (max 8 players)');
+    // Apply maxPlayers limit
+    if (room && room.players.length >= (room.maxPlayers || 8) && !room.players.find(p => p.id === socket.id)) {
+      socket.emit('room_error', `Room is full (max ${room.maxPlayers || 8} players)`);
       return;
     }
 
@@ -277,6 +277,7 @@ io.on('connection', (socket) => {
         round: 1,
         maxRounds: 3,
         turnTime: 60,
+        maxPlayers: 8,
         status: 'lobby',
         timer: 0,
         timerInterval: null,
@@ -294,9 +295,9 @@ io.on('connection', (socket) => {
     io.to(roomId).emit('room_update', roomData);
     console.log(`${username} joined room ${roomId}`);
 
-    // auto-start logic: when the second player joins and the room is still in lobby
-    if (room.status === 'lobby' && room.players.length === 2) {
-      console.log(`Auto-starting game in room ${roomId} because second player joined`);
+    // auto-start logic: when the number of players equals maxPlayers in lobby
+    if (room.status === 'lobby' && room.players.length === (room.maxPlayers || 2)) {
+      console.log(`Auto-starting game in room ${roomId} because player count reached limit`);
       room.round = 1;
       room.players.forEach(p => p.score = 0);
       room.drawerQueue = [...room.players.map(p => p.id)];
@@ -320,8 +321,17 @@ io.on('connection', (socket) => {
     if (room && room.status === 'lobby' && room.players.length > 0 && room.players[0].id === socket.id) {
       if (settings.maxRounds) room.maxRounds = settings.maxRounds;
       if (settings.turnTime) room.turnTime = settings.turnTime;
+      if (settings.maxPlayers) room.maxPlayers = settings.maxPlayers;
       const roomData = { ...room, timerInterval: null, guessedPlayers: Array.from(room.guessedPlayers || []) };
       io.to(roomId).emit('room_update', roomData);
+      // if current count already meets new limit, start immediately
+      if (room.players.length === room.maxPlayers) {
+        console.log(`Auto-start after setting change in room ${roomId}`);
+        room.round = 1;
+        room.players.forEach(p => p.score = 0);
+        room.drawerQueue = [...room.players.map(p => p.id)];
+        startNextTurn(roomId, room);
+      }
     }
   });
 
