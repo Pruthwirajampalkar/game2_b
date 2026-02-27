@@ -270,8 +270,10 @@ io.on('connection', (socket) => {
   socket.on('join_room', ({ username, avatar, roomId }) => {
     let room = rooms.get(roomId);
 
+    let existingPlayerIndex = room ? room.players.findIndex(p => p.username === username) : -1;
+
     // Apply maxPlayers limit
-    if (room && room.players.length >= (room.maxPlayers || 8) && !room.players.find(p => p.id === socket.id)) {
+    if (room && room.players.length >= (room.maxPlayers || 8) && existingPlayerIndex === -1) {
       socket.emit('room_error', `Room is full (max ${room.maxPlayers || 8} players)`);
       return;
     }
@@ -298,9 +300,21 @@ io.on('connection', (socket) => {
       room = rooms.get(roomId);
     }
 
-    // Avoid duplicate names/sockets if possible, but allow for now
-    if (!room.players.find(p => p.id === socket.id)) {
-      // if reconnecting with same username and they happen to be original host, restore hostId
+    if (existingPlayerIndex !== -1) {
+      const oldId = room.players[existingPlayerIndex].id;
+      room.players[existingPlayerIndex].id = socket.id;
+
+      const dqIndex = room.drawerQueue.indexOf(oldId);
+      if (dqIndex !== -1) room.drawerQueue[dqIndex] = socket.id;
+
+      if (room.currentDrawer === oldId) room.currentDrawer = socket.id;
+      if (room.hostId === oldId) room.hostId = socket.id;
+
+      if (room.guessedPlayers.has(oldId)) {
+        room.guessedPlayers.delete(oldId);
+        room.guessedPlayers.add(socket.id);
+      }
+    } else {
       if (room.hostName === username && !room.hostId) {
         room.hostId = socket.id;
       }
@@ -318,6 +332,14 @@ io.on('connection', (socket) => {
       room.players.forEach(p => p.score = 0);
       room.drawerQueue = [...room.players.map(p => p.id)];
       startNextTurn(roomId, room);
+    }
+  });
+
+  socket.on('word_chosen', ({ roomId, word }) => {
+    const room = rooms.get(roomId);
+    if (room && room.status === 'choosing_word' && room.currentDrawer === socket.id) {
+      clearInterval(room.timerInterval);
+      startGameTurnWithWord(roomId, room, word);
     }
   });
 
@@ -386,6 +408,7 @@ io.on('connection', (socket) => {
     }
 
     const guessStr = guess.trim();
+    if (!guessStr) return;
     const distance = getEditDistance(guessStr.toLowerCase(), room.currentWord.toLowerCase());
 
     const player = room.players.find(p => p.id === socket.id);
@@ -405,7 +428,7 @@ io.on('connection', (socket) => {
         drawer.score += 5; // Drawer gets fix 5 for each correct guess
       }
 
-      io.to(roomId).emit('correct_guess', { username: player.username });
+      io.to(roomId).emit('correct_guess', { username: player?.username || 'Unknown' });
       const roomData = { ...room, timerInterval: null, guessedPlayers: Array.from(room.guessedPlayers) };
       io.to(roomId).emit('room_update', roomData);
 
