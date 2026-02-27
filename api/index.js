@@ -497,8 +497,8 @@ io.on('connection', (socket) => {
 });
 
 if (!process.env.VERCEL) {
-  server.listen(PORT, () => {
-    console.log(`Server listening on port ${PORT}`);
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server listening on port ${PORT} at 0.0.0.0`);
   });
 }
 
