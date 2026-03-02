@@ -206,7 +206,7 @@ function revealHint(roomId, room) {
 function startGameTurnWithWord(roomId, room, word) {
   room.currentWord = word;
   room.revealedIndices = new Set();
-  room.timer = room.turnTime || 60;
+  room.timer = room.turnTime || 120;
   room.status = 'playing';
 
   const maskedWord = word.split('').map(c => c.match(/[a-zA-Z]/) ? '_ ' : c + ' ').join('');
@@ -223,7 +223,7 @@ function startGameTurnWithWord(roomId, room, word) {
     room.timer--;
     io.to(roomId).emit('timer_update', room.timer);
 
-    const turnTime = room.turnTime || 60;
+    const turnTime = room.turnTime || 120;
     if (room.timer === Math.floor(turnTime * 0.5) || room.timer === Math.floor(turnTime * 0.25)) {
       revealHint(roomId, room);
     }
@@ -295,7 +295,7 @@ io.on('connection', (socket) => {
         currentWord: '',
         round: 1,
         maxRounds: 3,
-        turnTime: 60,
+        turnTime: 120,
         maxPlayers: 8,
         hostId: socket.id,
         hostName: username,
@@ -424,7 +424,7 @@ io.on('connection', (socket) => {
       room.guessedPlayers.add(socket.id);
 
       const drawer = room.players.find(p => p.id === room.currentDrawer);
-      const totalTime = room.turnTime || 60;
+      const totalTime = room.turnTime || 120;
       const totalGuessers = room.players.length - 1; // everyone except drawer
 
       // --- Skribbl.io-style scoring ---
