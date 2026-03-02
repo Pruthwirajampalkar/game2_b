@@ -271,8 +271,8 @@ function endGame(roomId, room) {
 }
 
 io.on('connection', (socket) => {
-  console.log('✅ User connected:', socket.id, 'Transport:', socket.io.engine.transport.name);
-  console.log('📊 Active connections:', io.engine.clientsCount);
+  console.log('✅ User connected:', socket.id, 'Transport:', socket.conn?.transport?.name || 'unknown');
+  console.log('📊 Active connections:', io.engine?.clientsCount || 'N/A');
 
   socket.on('join_room', ({ username, avatar, roomId }) => {
     let room = rooms.get(roomId);
