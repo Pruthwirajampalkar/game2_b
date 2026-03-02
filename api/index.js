@@ -5,7 +5,14 @@ const cors = require('cors');
 require('dotenv').config();
 
 const app = express();
-app.use(cors());
+
+const CLIENT_URL = process.env.CLIENT_URL || '*';
+
+app.use(cors({
+  origin: CLIENT_URL,
+  methods: ['GET', 'POST'],
+  credentials: CLIENT_URL !== '*'
+}));
 app.use(express.json());
 
 // Root health check route
@@ -16,9 +23,9 @@ app.get('/', (req, res) => {
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: '*',
+    origin: CLIENT_URL,
     methods: ['GET', 'POST'],
-    credentials: false
+    credentials: CLIENT_URL !== '*'
   },
   transports: ['websocket', 'polling'],
   pingInterval: 25000,
@@ -496,11 +503,6 @@ io.on('connection', (socket) => {
   });
 });
 
-if (!process.env.VERCEL) {
-  server.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server listening on port ${PORT} at 0.0.0.0`);
-  });
-}
-
-// Export the server for Vercel Serverless Functions
-module.exports = server;
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server listening on port ${PORT} at 0.0.0.0`);
+});
