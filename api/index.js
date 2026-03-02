@@ -424,23 +424,34 @@ io.on('connection', (socket) => {
       room.guessedPlayers.add(socket.id);
 
       const drawer = room.players.find(p => p.id === room.currentDrawer);
+      const totalTime = room.turnTime || 60;
+      const totalGuessers = room.players.length - 1; // everyone except drawer
 
-      // Calculate score based on time remaining
-      const timeBonus = Math.floor(room.timer / 2);
-      const points = 10 + timeBonus;
+      // --- Skribbl.io-style scoring ---
+      // Guesser: 50-550 points based on how fast they guess
+      const timeRatio = Math.max(0, room.timer / totalTime);
+      const guesserPoints = Math.floor(500 * timeRatio) + 50;
+
+      // Drawer: gets proportional points per correct guess
+      // More guessers = more total drawer points (rewarding good drawings)
+      const drawerPoints = Math.max(25, Math.floor(guesserPoints / totalGuessers));
 
       if (player && drawer) {
-        player.score += points;
+        player.score += guesserPoints;
         player.emotion = 'happy';
-        drawer.score += 5; // Drawer gets fix 5 for each correct guess
+        drawer.score += drawerPoints;
       }
 
-      io.to(roomId).emit('correct_guess', { username: player?.username || 'Unknown' });
+      io.to(roomId).emit('correct_guess', {
+        username: player?.username || 'Unknown',
+        points: guesserPoints,
+        drawerPoints: drawerPoints
+      });
       const roomData = { ...room, timerInterval: null, guessedPlayers: Array.from(room.guessedPlayers) };
       io.to(roomId).emit('room_update', roomData);
 
       // If all guessers guessed it, end round immediately
-      if (room.guessedPlayers.size === room.players.length - 1 && room.players.length > 1) {
+      if (room.guessedPlayers.size === totalGuessers && totalGuessers > 0) {
         endRound(roomId, room);
       }
 
